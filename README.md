@@ -9,7 +9,7 @@ and differential expression analysis of the gastric cancer dataset **GSE9348**.
 2. QC before and after normalization
 3. Normalize with RMA
 4. Filter low-expression probes
-5. Differential expression with limma
+
 
 ## How to Run
 ```R
