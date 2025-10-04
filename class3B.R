@@ -9,8 +9,7 @@ install.packages("dplyr")
 library(GEOquery)             
 library(affy)                 
 library(arrayQualityMetrics)  
-library(dplyr)               
-
+library(dplyr)  
 gse_data <- getGEO("GSE9348", GSEMatrix = TRUE)
 # Extract expression data
 expression_data <- exprs(gse_data$GSE9348_series_matrix.txt.gz)
@@ -24,52 +23,78 @@ sum(is.na(phenotype_data$source_name_ch1))
 #getGEOSuppFiles("GSE9348", baseDir = "Raw_Data", makeDirectory = TRUE)
 # 1. Extract CEL files from the TAR archive
 untar("D:\\GSE9348_RAW.tar", exdir = "D:\\GSE9348\\CEL")
-
 # 2. Read CEL files
 raw_data <- ReadAffy(celfile.path = "D:\\GSE9348\\CEL")
 
 # 3. Quality control report
 arrayQualityMetrics(expressionset = raw_data,
-                    outdir = "D:\\GSE9348\\QC_before_norm",
+                    outdir = "D:\\GSE9348\\QC_Raw_Data",
                     force = TRUE,
                     do.logtransform = TRUE)
-
 # 4. Normalize data using RMA
 norm_data <- rma(raw_data)
 # QC after data normalization 
-arrayQualityMetrics(expressionset = normalized_data,
-                    outdir = "D:\\GSE9348\\QC_after_norm",
+arrayQualityMetrics(expressionset = norm_data,
+                    outdir = "D:\\GSE9348\\QC_Normalized_Data",
                     force = TRUE)
-# Extract normalized expression values into a data frame
 processed_data <- as.data.frame(exprs(norm_data))
-
-dim(processed_data)   # Dimensions: number of probes × number of samples
-# Calculate median intensity per probe across samples
+dim(processed_data)
+############################################################
+# Filter Low Variance Probes
+############################################################
 row_median <- rowMedians(as.matrix(processed_data))
-# Visualize distribution of probe median intensities
+
 hist(row_median,
      breaks = 100,
      freq = FALSE,
      main = "Median Intensity Distribution")
-# Set a threshold to remove low variance probes 
-threshold <- 3.5 
+
+threshold <- 4
 abline(v = threshold, col = "black", lwd = 2)
-# Select probes above threshold
-indx <- row_median > threshold 
+
+indx <- row_median > threshold
 filtered_data <- processed_data[indx, ]
-# Rename filtered expression data with sample metadata
 colnames(filtered_data) <- rownames(phenotype_data)
-# Overwrite processed data with filtered dataset
-processed_data <- filtered_data 
-# -----------------------------------
-#### Phenotype Data Preparation ####
-# -----------------------------------
-class(phenotype_data$source_name_ch1) 
-# Define experimental groups (normal vs cancer)
+processed_data <- filtered_data
+
+############################################################
+# Define Groups (Normal vs Cancer)
+############################################################
 groups <- factor(phenotype_data$source_name_ch1,
                  levels = c("mucosa", "tumor"),
-                 label = c("normal", "cancer"))
+                 labels = c("normal", "cancer"))
+# Inspect unique values in phenotype_data$source_name_ch1
+unique(phenotype_data$source_name_ch1)
+# Define groups based on keywords in the metadata
+groups <- ifelse(grepl("tumor", phenotype_data$source_name_ch1, ignore.case = TRUE),
+                 "cancer", "normal")
 
-class(groups)
-levels(groups)
+# Convert to factor
+groups <- factor(groups, levels = c("normal", "cancer"))
+
+# Verify
+table(groups)
+
+############################################################
+# Boxplot After Normalization
+############################################################
+boxplot(exprs(norm_data),
+        main = "Boxplot of Normalized Expression Data",
+        xlab = "Samples",
+        ylab = "Log2 Expression",
+        col = "lightblue",
+        las = 2,        # rotate x-axis labels
+        outline = FALSE # ignore extreme outliers
+)
+############################################################
+# 10. PCA Plot After Normalization
+############################################################
+pca <- prcomp(t(exprs(norm_data)), scale. = TRUE)
+
+plot(pca$x[,1], pca$x[,2],
+     col = as.factor(groups),
+     pch = 19,
+     xlab = paste0("PC1 (", round(100*summary(pca)$importance[2,1], 1), "%)"),
+     ylab = paste0("PC2 (", round(100*summary(pca)$importance[2,2], 1), "%)"),
+     main = "PCA of Normalized Expression Data")
 
